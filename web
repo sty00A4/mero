@@ -1,0 +1,34 @@
+--- init
+gui = require("libs.gui")
+require("libs.ext")
+local redweb = 0
+
+--- modems
+local modems = { peripheral.find("modem", function(name, modem)
+    return modem.isWireless()
+end) }
+if modems then if modem[1].open then modems[1].open(1)
+else error("no wireless modem attached") end
+else error("no wireless modem attached") end
+
+--- main
+local tArgs = {...}
+if #tArgs >= 3 then
+    local webp = require(tArgs[1])
+    while true do
+        local msg = rednet.receiveFrom(redweb, 8)
+        if msg.head == "info" then
+
+        end
+    end
+elseif #tArgs >= 1 then
+    if tArgs[1] == "-u" or tArgs[1] == "-update" then
+        fs.delete(shell.getRunningProgram())
+        shell.run("pastebin get 82GVYEe0 "..shell.getRunningProgram())
+        print("updated web")
+    end
+else
+    print("Usage:")
+    print("web (gui file) (protocol) (name)")
+end
+return true

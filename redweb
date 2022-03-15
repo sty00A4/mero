@@ -1,0 +1,56 @@
+--- init
+gui = require("libs.gui")
+local p = require("cc.pretty")
+require("libs.ext")
+local redweb = 0
+local W, H = term.getSize()
+
+--- args
+local tArgs = {...}
+if tArgs then
+    if tArgs[1] == "-u" or tArgs[1] == "-upadte" then
+        fs.delete(shell.getRunningProgram())
+        shell.run("pastebin get 4KV1097d "..shell.getRunningProgram())
+        print("updated redweb")
+        return
+    else
+        redweb = tonumber(tArgs[1])
+    end
+end
+
+--- modems
+term.reset()
+local modems = { peripheral.find("modem", function(name, modem)
+    return modem.isWireless()
+end) }
+if modems then modems[1].open(1)
+else error("no modem attached") end
+
+--- functions
+local function lookup(topic)
+    rednet.send(redweb, { head = "lookup", obj = topic })
+    return rednet.receiveFrom(redweb, 8)
+end
+
+--- main
+local webp = {
+    start = "main",
+    pages = {
+        ["main"] = {
+            ["id"] = gui.text("#" .. tostring(os.getComputerID()), 1, "bottom", nil, nil, colors.gray),
+            ["prefix"] = gui.text("web#", 2, 2, nil, nil, colors.gray),
+            ["serach_bar"] = gui.textInput(6, 2, 37, nil, nil, nil, true),
+            ["search"] = gui.button("search", 45, 2, nil, nil, colors.black, colors.lime,
+                    function(self, elements, pages)
+                        elements["lookup"].list = lookup(elements["serach_bar"].input)
+                        elements["serach_bar"].input = ""
+                        elements["serach_bar"].selected = true
+                        return elements, pages
+                    end, keys.enter),
+            ["lookup"] = gui.list({}, 2, 4, W-2, H-5, nil, colors.gray, nil, "nothing found", colors.lightGray)
+        },
+    }
+}
+term.reset()
+local success = gui.run(webp.start, webp.pages)
+term.reset()
