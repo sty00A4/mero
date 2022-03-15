@@ -1,0 +1,281 @@
+--- globals
+local function _redef_globals()
+    table.extend = function(t1, t2) for _, v in pairs(t2) do table.insert(t1, v) end return t1 end
+    table.contains = function(t, e) for _, v in pairs(t) do if v == e then return true end end return false end
+    string.split = function(s, sep)
+        local t = {}
+        local temp = ""
+        for i = 1, #s do
+            local c = s:sub(i,i)
+            if c == sep then
+                if #temp > 0 then table.insert(t, temp) end
+                table.insert(t, c)
+                temp = ""
+            else
+                if temp then temp = temp .. c else temp = c end
+            end
+        end
+        if #temp > 0 then table.insert(t, temp) end
+        return t
+    end
+    string.contains = function(s, s2)
+        for i = 1, #s do
+            if s:sub(i, i+#s2-1) then
+                return true
+            end
+        end
+        return false
+    end
+    string.splits = function(s, seps)
+        local t = {}
+        local temp = ""
+        for i = 1, #s do
+            local c = s:sub(i,i)
+            if table.contains(seps, c) then
+                if #temp > 0 then table.insert(t, temp) end
+                temp = ""
+            else
+                if temp then temp = temp .. c else temp = c end
+            end
+        end
+        if #temp > 0 then table.insert(t, temp) end
+        return t
+    end
+    table.join = function(t, j)
+        local str = ""
+        for _, v in pairs(t) do
+            if type(v) == "string" then
+                if str then str = str .. j .. v else str = v end
+            end
+        end
+        return str
+    end
+    os.pullEventsRaw = function(events)
+        while true do
+            local event, p1, p2, p3, p4, p5, p6 = os.pullEventRaw()
+            if table.contains(events, event) then return event, p1, p2, p3, p4, p5, p6 end
+        end
+    end
+end
+_redef_globals()
+local sPath = string.split("/")
+table.remove(sPath, #sPath)
+sPath = table.join(sPath, "/")
+local TERM = term.current()
+
+--- reset screen
+TERM.setBackgroundColor(colors.black)
+TERM.setTextColor(colors.white)
+TERM.clear()
+
+--- standards
+shell.setAlias("cls", "clear")
+shell.setAlias("del", "delete")
+shell.setAlias("r", "reboot")
+local COLORS = {fg = colors.white, bg = colors.black, kw = colors.lime, num = colors.cyan, kw2 = colors.gray,
+                back = colors.gray, mid = colors.lightGray}
+if not TERM.isColor() then COLORS.kw = colors.white; COLORS.num = colors.white end
+local prefix = "> "
+
+--- windows
+local W, H = TERM.getSize()
+-- console
+local console = window.create(TERM, 1, 1, W, H-2)
+-- input
+local input = window.create(TERM, 1, H-1, W, 1)
+local inputText = ""
+local inputTextPos = 1
+local prevInputText = inputText
+local inputLogIndex = -1
+local inputLog = {}
+local inputCompl = shell.complete(inputText, sPath)
+local inputComplIndex = 1
+-- info
+local info = window.create(TERM, 1, H, W, 1)
+
+--- keywords
+local NUMS = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }
+local tPograms = shell.programs()
+table.insert(tPograms, "dir")
+table.extend(tPograms, shell.aliases())
+
+--- main
+local ctrl = false
+local shift = false
+local rCtrl = false
+local rShift = false
+local eventLog = {}
+
+while true do
+    --- input
+    input.setBackgroundColor(COLORS.bg)
+    input.setTextColor(COLORS.back)
+    input.clear()
+    input.setCursorPos(1, 1)
+    input.write(prefix)
+    inputCompl = shell.complete(inputText)
+    if not (prevInputText == inputText) then inputComplIndex = 1 end
+    -- text highlight -----------------------------------------------------------------------------
+    local words = string.split(inputText, " ")
+    if #words > 0 then
+        for i = 1, #words do
+            input.setTextColor(COLORS.fg)
+            if table.contains(tPograms, words[i]) and i == 1 then input.setTextColor(COLORS.kw) end
+            if words[i]:sub(1, 1) == "-" then input.setTextColor(COLORS.kw2)
+            elseif table.contains(NUMS, words[i]:sub(1, 1)) then input.setTextColor(COLORS.num) end
+            input.write(words[i])
+        end
+    end
+    if inputCompl then if inputCompl[inputComplIndex] then
+        input.setTextColor(COLORS.back)
+        input.write(inputCompl[inputComplIndex])
+    end end
+    -- info ----------------------------------------------------------------------------
+    info.setCursorPos(1, 1)
+    info.setBackgroundColor(COLORS.bg)
+    info.clear()
+    if ctrl then info.setTextColor(COLORS.kw) else info.setTextColor(COLORS.back) end
+    info.write("ctrl ")
+    if shift then info.setTextColor(COLORS.kw) else info.setTextColor(COLORS.back) end
+    info.write("shift ")
+    if rCtrl then info.setTextColor(COLORS.kw) else info.setTextColor(COLORS.back) end
+    info.write("rCtrl ")
+    if rShift then info.setTextColor(COLORS.kw) else info.setTextColor(COLORS.back) end
+    info.write("rShift ")
+    local log = eventLog[#eventLog]
+    if log then
+        local eventLogStr = log.event .. ": "
+        if log.p1 then eventLogStr = eventLogStr .. "1 " .. tostring(log.p1) .. ", " end
+        if log.p2 then eventLogStr = eventLogStr .. "2 " .. tostring(log.p2) .. ", " end
+        if log.p3 then eventLogStr = eventLogStr .. "3 " .. tostring(log.p3) .. ", " end
+        if log.p4 then eventLogStr = eventLogStr .. "4 " .. tostring(log.p4) .. ", " end
+        eventLogStr = eventLogStr:sub(1, #eventLogStr-2)
+        info.setCursorPos(W - #eventLogStr+1, 1)
+        info.setTextColor(COLORS.back)
+        info.write(eventLogStr)
+    end
+    -- take user input ----------------------------
+    input.setTextColor(COLORS.fg)
+    input.setBackgroundColor(COLORS.bg)
+    input.setCursorPos(#inputText+1+#prefix, 1)
+    input.setCursorBlink(true)
+    local event, p1, p2, p3, p4 = os.pullEventsRaw({ "terminate", "key", "char", "key_up", "paste" })
+    table.insert(eventLog, { event = event, p1 = p1, p2 = p2, p3 = p3, p4 = p4 })
+    input.setCursorBlink(false)
+    if event == "terminate" then
+        -- shutdown ----------
+        term.redirect(console)
+        os.shutdown()
+    elseif event == "key"then
+        if p1 == keys.e and ctrl then
+            -- exit to standard shell --
+            term.redirect(term.native())
+            term.setCursorPos(1, 1)
+            break
+        elseif p1 == keys.tab then
+            -- show auto completion options or auto complete -----------
+            if ctrl then
+                term.redirect(console)
+                console.setTextColor(COLORS.back)
+                print("[COMPLETIONS]")
+                console.setTextColor(COLORS.fg)
+                if inputCompl then textutils.tabulate(inputCompl) end
+                term.redirect(TERM)
+            else
+                if inputCompl then if inputCompl[inputComplIndex] then
+                    inputText = inputText .. inputCompl[inputComplIndex]
+                end end
+            end
+        elseif p1 == keys.backspace then
+            -- clear all or remove last letter -----------------------------------------------------------------------
+            if ctrl then
+                inputText = ""
+            else
+                if inputText then if #inputText > 0 then inputText = inputText:sub(1, #inputText-1) end end
+            end
+        elseif p1 == keys.enter then
+            if not (inputLog[#inputLog] == inputText) then table.insert(inputLog, inputText) end
+            if words[1] then
+                if words[1]:sub(#words[1]-1) == ".t" then inputText = ".turt/turt " .. inputText end
+            end
+            -- run -----------------------------------------------
+            if shift then
+                local run_window = window.create(TERM, 1, 1, W, H)
+                run_window.setBackgroundColor(colors.black)
+                run_window.setTextColor(colors.white)
+                run_window.clear()
+                term.redirect(run_window)
+                shell.run(inputText)
+                term.redirect(console)
+                shell.run("clear")
+                ctrl = false
+            else
+                -- update bar ---------------------
+                input.setBackgroundColor(COLORS.kw)
+                input.setTextColor(COLORS.bg)
+                input.clear()
+                -- console -----------------------------
+                console.setTextColor(COLORS.back)
+                term.redirect(console)
+                print(prefix..inputText)
+                term.redirect(TERM)
+                console.setTextColor(COLORS.fg)
+                console.setCursorBlink(false)
+                term.redirect(console)
+                shell.run(inputText)
+            end
+            term.setBackgroundColor(colors.black)
+            term.setTextColor(colors.white)
+            term.redirect(TERM)
+            _redef_globals()
+            -- reset input -----------------------------------------------------
+            inputText = " "; inputText = inputText:sub(1,#inputText-1)
+        elseif p1 == keys.leftCtrl then ctrl = true
+        elseif p1 == keys.leftShift then shift = true
+        elseif p1 == keys.rightCtrl then rCtrl = true
+        elseif p1 == keys.rightShift then rShift = true
+        elseif p1 == keys.up and #inputLog > 0 then
+            -- rewrite previous input text forward ------------
+            if inputLogIndex < #inputLog-1 then
+                inputLogIndex = inputLogIndex + 1
+                inputText = inputLog[#inputLog - inputLogIndex]
+                prevInputText = inputText
+            end
+        elseif p1 == keys.down then
+            -- rewrite previous input text back ---------------
+            if inputLogIndex > 0 then
+                inputLogIndex = inputLogIndex - 1
+                inputText = inputLog[#inputLog - inputLogIndex]
+                prevInputText = inputText
+            else
+                inputText = ""
+            end
+        end
+    elseif event == "key_up" then
+        -- disable ctrl ----------------------------
+        if p1 == keys.leftCtrl then ctrl = false
+        elseif p1 == keys.leftShift then shift = false
+        elseif p1 == keys.rightCtrl then rCtrl = false
+        elseif p1 == keys.rightShift then rShift = false
+        end
+    elseif event == "char" then
+        -- write ----------------------------------------------------------
+        if inputText then inputText = inputText..p1 else inputText = p1 end
+    elseif event == "paste" then
+        -- paste ----------------------------------------------------------
+        if inputText then inputText = inputText..p1 else inputText = p1 end
+    end
+    -- reset prevInputText and inputLogIndex if needed ---------------------------------------
+    if not (prevInputText == inputText) then inputLogIndex = -1; prevInputText = inputText end
+end
+--- exit
+input.setBackgroundColor(colors.black)
+input.setTextColor(colors.white)
+input.clear()
+console.setBackgroundColor(colors.black)
+console.setTextColor(colors.white)
+console.clear()
+TERM.setCursorPos(1, 1)
+TERM.setBackgroundColor(colors.black)
+TERM.setTextColor(colors.white)
+TERM.clear()
